@@ -36,9 +36,26 @@ def _resolve(args):
     return info, sel
 
 
+def _scanner(info, root) -> dict:
+    try:
+        version = oscap.oscap_version()
+    except oscap.OscapError as e:
+        return {"oscap_version": None, "warnings": [str(e)]}
+    return {
+        "oscap_version": ".".join(map(str, version)),
+        "warnings": oscap.compatibility_warnings(version, info.family, root),
+    }
+
+
 def cmd_detect(args) -> dict:
     info, sel = _resolve(args)
-    return {"root": args.root, "os": info.to_dict(), "content": sel.to_dict(), "content_dir": str(catalog.content_dir())}
+    return {
+        "root": args.root,
+        "os": info.to_dict(),
+        "content": sel.to_dict(),
+        "content_dir": str(catalog.content_dir()),
+        "scanner": _scanner(info, args.root),
+    }
 
 
 def cmd_feeds_fetch(args) -> dict:
@@ -74,6 +91,7 @@ def cmd_scan_compliance(args) -> dict:
     data = report.to_dict(include_passing=args.all)
     result = {
         "track": "compliance",
+        "scanner": _scanner(info, args.root),
         "os": info.to_dict(),
         "datastream": datastream,
         "scan": run.to_dict(),
@@ -104,6 +122,7 @@ def cmd_scan_cve(args) -> dict:
     data = parse_oval_results(run.results).to_dict()
     return {
         "track": "cve",
+        "scanner": _scanner(info, args.root),
         "os": info.to_dict(),
         "feed": str(feed_path),
         "scan": run.to_dict(),

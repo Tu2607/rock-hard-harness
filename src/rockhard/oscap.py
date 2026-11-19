@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
@@ -44,6 +45,32 @@ def oscap_binary() -> str:
     if shutil.which(binary) is None:
         raise OscapError(f"oscap binary not found: {binary}")
     return binary
+
+
+# Below this version the dpkginfo probe crashes (SIGSEGV) or returns nothing
+# when OSCAP_PROBE_ROOT points at a mounted root. Observed with 1.3.9.
+MIN_VERSION_DPKG_ROOT = (1, 4, 0)
+
+
+def oscap_version() -> tuple[int, ...]:
+    out = subprocess.run([oscap_binary(), "--version"], capture_output=True, text=True, check=False).stdout
+    m = re.search(r"\(oscap\)\s+(\d+(?:\.\d+)+)", out)
+    if not m:
+        raise OscapError("could not read oscap version")
+    return tuple(int(x) for x in m.group(1).split("."))
+
+
+def compatibility_warnings(version: tuple[int, ...], os_family: tuple[str, ...], root: str | Path) -> list[str]:
+    """Known problems with this oscap version for this target."""
+    warnings = []
+    mounted = str(Path(root).resolve()) != "/"
+    if mounted and {"debian", "ubuntu"} & set(os_family) and version < MIN_VERSION_DPKG_ROOT:
+        warnings.append(
+            f"oscap {'.'.join(map(str, version))} cannot read dpkg packages from a mounted root "
+            f"(package checks will be wrong or crash); use oscap >= {'.'.join(map(str, MIN_VERSION_DPKG_ROOT))}, "
+            "e.g. the rock-hard-harness container"
+        )
+    return warnings
 
 
 def probe_env(root: str | Path, os_version: str = "") -> dict[str, str]:

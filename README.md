@@ -93,4 +93,5 @@ Test fixtures in `tests/fixtures/` are real `oscap` output: a trimmed STIG ARF f
 ## Known limitations
 
 * Probes that query a running service (systemd, D-Bus) see the container, not the host. Rules that depend on them may report `notchecked` or `error`; these land in the `review` bucket.
-* OpenSCAP 1.3.9 (Ubuntu 24.04's package) crashes in the `dpkginfo` probe when scanning a mounted root. The container image uses Fedora's OpenSCAP 1.4.x; Debian and Ubuntu targets still need verification on a real host.
+* OpenSCAP is part of the container image, not the Python package, because `oscap` is a C binary with its own libraries and probes. The image refuses to build with OpenSCAP older than 1.4.0; pin an exact version with `--build-arg OPENSCAP_VERSION=...`.
+* OpenSCAP 1.3.9 (Ubuntu 24.04's package) crashes in the `dpkginfo` probe when scanning a mounted root. `rockhard detect` reports the `oscap` version and warns about this. The image uses Fedora's OpenSCAP 1.4.x; Debian and Ubuntu targets still need verification on a real host.

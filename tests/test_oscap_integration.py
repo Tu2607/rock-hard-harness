@@ -28,3 +28,8 @@ def test_probe_env_points_at_root(tmp_path):
     assert env["OSCAP_EVALUATION_TARGET"] == f"chroot://{tmp_path.resolve()}"
     assert env["OSCAP_PROBE_PRIMARY_HOST_NAME"] == "target"
     assert "OSCAP_PROBE_ROOT" not in oscap.probe_env("/")
+
+
+def test_oscap_version_parses():
+    v = oscap.oscap_version()
+    assert len(v) >= 2 and v[0] >= 1
