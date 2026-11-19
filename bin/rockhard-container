@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Run rockhard inside the scanner container against this host.
+#
+#   sudo bin/rockhard-container build
+#   sudo bin/rockhard-container detect
+#   sudo bin/rockhard-container feeds fetch
+#   sudo bin/rockhard-container scan compliance --remediate
+#   sudo bin/rockhard-container scan cve
+#
+# Isolation: the host root is mounted read-only at /host, all capabilities are
+# dropped except DAC_READ_SEARCH (to read root-only files such as
+# /etc/shadow), and scans run with networking disabled. Only `feeds fetch`
+# gets network access, and it can only write to the feed cache volume.
+# Results land in $ROCKHARD_OUT (default ./rockhard-out) on the host.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${ROCKHARD_IMAGE:-localhost/rock-hard-harness:latest}"
+OUT="${ROCKHARD_OUT:-$PWD/rockhard-out}"
+FEEDS_VOLUME="${ROCKHARD_FEEDS_VOLUME:-rockhard-feeds}"
+
+if [[ -n "${ROCKHARD_ENGINE:-}" ]]; then
+  engine="$ROCKHARD_ENGINE"
+elif command -v podman >/dev/null; then
+  engine=podman
+elif command -v docker >/dev/null; then
+  engine=docker
+else
+  echo "rockhard-container: need podman or docker" >&2
+  exit 1
+fi
+
+if [[ "${1:-}" == "build" ]]; then
+  shift
+  exec "$engine" build -t "$IMAGE" -f "$here/container/Containerfile" "$@" "$here"
+fi
+
+if [[ $EUID -ne 0 ]]; then
+  echo "rockhard-container: run as root; rootless containers cannot read root-owned host files" >&2
+  exit 1
+fi
+
+mkdir -p "$OUT"
+
+# Recursive read-only bind so submounts (/boot, /home, ...) are read-only too.
+if [[ "$engine" == docker ]]; then
+  host_mount=(--mount "type=bind,source=/,target=/host,readonly,bind-recursive=readonly")
+else
+  host_mount=(-v "/:/host:rro")
+fi
+
+args=(
+  run --rm
+  "${host_mount[@]}"
+  -v "$OUT:/out"
+  -v "$FEEDS_VOLUME:/var/cache/rockhard/feeds"
+  --cap-drop ALL --cap-add DAC_READ_SEARCH
+  --security-opt no-new-privileges
+  --security-opt label=disable
+  --read-only --tmpfs /tmp
+)
+
+# Only feed downloads need the network.
+if [[ "${1:-} ${2:-}" != "feeds fetch" ]]; then
+  args+=(--network none)
+fi
+
+exec "$engine" "${args[@]}" "$IMAGE" "$@"
