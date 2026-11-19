@@ -6,12 +6,19 @@
 #   sudo bin/rockhard-container feeds fetch
 #   sudo bin/rockhard-container scan compliance --remediate
 #   sudo bin/rockhard-container scan cve
+#   sudo bin/rockhard-container apply --rule <rule> --confirm-host "$(hostname)"
 #
 # Isolation: the host root is mounted read-only at /host, all capabilities are
 # dropped except DAC_READ_SEARCH (to read root-only files such as
 # /etc/shadow), and scans run with networking disabled. Only `feeds fetch`
 # gets network access, and it can only write to the feed cache volume.
 # Results land in $ROCKHARD_OUT (default ./rockhard-out) on the host.
+#
+# `apply` is different on purpose: it CHANGES the host. It runs privileged in
+# the host PID namespace and each script runs via `nsenter --target 1` in the
+# host's mount/UTS/IPC/network/PID namespaces, so file edits, package
+# installs, systemctl, sysctl and modprobe all act on the host, not the
+# container. It gets no host filesystem mount of its own, only $ROCKHARD_OUT.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,6 +48,17 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 mkdir -p "$OUT"
+
+if [[ "${1:-}" == "apply" ]]; then
+  exec "$engine" run --rm \
+    --privileged --pid host \
+    --security-opt label=disable \
+    --network none \
+    -e ROCKHARD_APPLY_MODE=nsenter \
+    -v "$OUT:/out" \
+    --read-only --tmpfs /tmp \
+    "$IMAGE" "$@"
+fi
 
 # Recursive read-only bind so submounts (/boot, /home, ...) are read-only too.
 if [[ "$engine" == docker ]]; then
