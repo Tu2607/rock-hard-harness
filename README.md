@@ -9,7 +9,7 @@ A harness that lets Claude scan a Linux host with [OpenSCAP](https://www.open-sc
 | **Compliance** | DISA STIG profile from SCAP Security Guide (`oscap xccdf eval`) | Reviews failed rules, ships one remediation script per automatable rule, writes fixes for the rules SSG can't automate |
 | **CVE** | Vendor OVAL feed (`oscap oval eval`) | Triage (CISA KEV, EPSS), patch or mitigation suggestions, reachability checks |
 
-Scanning never changes the host. Remediation scripts are generated for review, and applying them is a separate, explicitly gated step (`rockhard apply`, see [Applying fixes](#applying-fixes-to-the-host)).
+Remediation scripts are generated **for review only**. Nothing in the harness executes them.
 
 ## How it works
 
@@ -60,34 +60,6 @@ ls rockhard-out/
 
 Rootful podman or docker is required: a rootless container cannot read root-owned host files.
 
-## Applying fixes to the host
-
-```bash
-sudo bin/rockhard-container apply --rule package_aide_installed --confirm-host "$(hostname)"
-sudo bin/rockhard-container apply --all --confirm-host "$(hostname)"
-sudo bin/rockhard-container scan compliance      # confirm the rules now pass
-```
-
-Changes must land on the host, not in the container, so `apply` runs differently from a scan:
-
-| | Scan | Apply |
-|---|---|---|
-| Container privileges | all capabilities dropped except `DAC_READ_SEARCH` | `--privileged --pid=host` |
-| Host filesystem | read-only bind at `/host` | none mounted; scripts run in the host's own mount namespace |
-| How commands reach the host | `oscap` probes read `/host` | each script runs via `nsenter --target 1 --mount --uts --ipc --net --pid`, i.e. as root in the host's namespaces |
-| Effect of `systemctl`, `sysctl`, `modprobe`, `apt`/`dnf` | n/a | act on the host |
-
-Guards:
-
-* You must name the rules (`--rule`, repeatable) or pass `--all`, and `--confirm-host` must match the host's hostname.
-* Before applying, `apply` checks that PID 1 is the host's init and not the container's entrypoint. Without `--pid=host`, `nsenter --target 1` would enter the container itself, so it refuses.
-* `/etc` on the host is archived to `rockhard-out/backup/` before the first script.
-* `apply` stops at the first failing script unless you pass `--keep-going`. Results go to `rockhard-out/apply-log.json`.
-
-A chroot into a writable `/host` mount was considered and rejected. File edits and package installs would land, but `systemctl`, `sysctl` and `modprobe` would act on the container, so many STIG fixes would silently do nothing.
-
-Without a container, run `rockhard apply` on the host itself with `sudo` (`ROCKHARD_APPLY_MODE=direct`, the default outside the image).
-
 ## Without a container
 
 ```bash
@@ -104,9 +76,8 @@ rockhard parse cve out/cve-oval-results.xml
 |---|---|
 | `compliance-arf.xml`, `compliance-report.html` | Raw OpenSCAP results and report |
 | `compliance-findings.json` | Non-passing rules: result, severity, STIG/SRG/CCI ids, category (`automatable`, `manual`, `review`), description |
-| `remediation/scripts/*.sh` | One script per automatable failed rule, from SSG's own fixes. Not executable; `apply` feeds them to `bash` |
+| `remediation/scripts/*.sh` | One script per automatable failed rule, from SSG's own fixes. Not executable until reviewed |
 | `remediation/plan.json` | Which rules got scripts, which need Claude (`manual`), which need a human look (`review`) |
-| `apply-log.json`, `backup/etc-*.tar.gz` | Per-script exit code and output from `apply`, and the `/etc` archive taken before it |
 | `cve-oval-results.xml`, `cve-report.html` | Raw OVAL results and report |
 | `cve-findings.json` | True vulnerability/patch definitions: CVEs, vendor severity, advisories, and the criteria that matched (affected package and fixed version) |
 

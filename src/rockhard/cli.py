@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__, apply, catalog, feeds, oscap, remediate
+from . import __version__, catalog, feeds, oscap, remediate
 from .osdetect import OSDetectionError, detect_os
 from .parsers import parse_oval_results, parse_xccdf_results
 
@@ -140,23 +140,6 @@ def cmd_parse_cve(args) -> dict:
     return parse_oval_results(args.file).to_dict()
 
 
-def cmd_apply(args) -> dict:
-    out = Path(args.out)
-    plan = Path(args.plan) if args.plan else out / "remediation" / "plan.json"
-    run = apply.apply_plan(
-        plan,
-        out,
-        confirm_host=args.confirm_host,
-        rule_ids=args.rule,
-        apply_all=args.all,
-        keep_going=args.keep_going,
-    )
-    result = run.to_dict()
-    result["log"] = str(out / "apply-log.json")
-    result["next"] = "rescan with `rockhard scan compliance` to confirm the rules now pass"
-    return result
-
-
 def cmd_remediate(args) -> dict:
     report = parse_xccdf_results(args.file, result_id=args.result_id)
     return remediate.build_plan(report, args.file, args.out).to_dict()
@@ -213,14 +196,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("file")
     sp.add_argument("--result-id")
     sp.set_defaults(func=cmd_remediate)
-
-    sp = with_out(sub.add_parser("apply", help="APPLY remediation scripts to the host (changes the system)"))
-    sp.add_argument("--plan", help="plan.json from a remediation run (default: <out>/remediation/plan.json)")
-    sp.add_argument("--rule", action="append", help="rule to apply, full id or short name (repeatable)")
-    sp.add_argument("--all", action="store_true", help="apply every script in the plan")
-    sp.add_argument("--confirm-host", required=True, help="the host's hostname, as a guard against applying to the wrong machine")
-    sp.add_argument("--keep-going", action="store_true", help="continue after a script fails")
-    sp.set_defaults(func=cmd_apply)
     return p
 
 
@@ -229,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _emit(args.func(args))
         return 0
-    except (CLIError, apply.ApplyError, OSDetectionError, catalog.UnsupportedOSError, oscap.OscapError, ValueError, OSError) as e:
+    except (CLIError, OSDetectionError, catalog.UnsupportedOSError, oscap.OscapError, ValueError, OSError) as e:
         _emit({"error": str(e), "type": type(e).__name__})
         return 1
 
