@@ -38,10 +38,12 @@ Detection and content mapping live in [`src/rockhard/catalog.py`](src/rockhard/c
 | Oracle Linux | `ol{N}` | 7, 8, 9 | Oracle ELSA |
 | AlmaLinux / Rocky | `almalinux{N}` / `rocky{N}`, falls back to `rhel{N}`* | no | AlmaLinux (Rocky: none yet) |
 | CentOS / Stream | `centos{N}` / `cs{N}` | no | RHEL feed (7/8, advisory) |
-| Ubuntu | `ubuntu{XXYY}` | 20.04, 22.04 (recent SSG) | Canonical CVE OVAL |
+| Ubuntu | `ubuntu{XXYY}` | 20.04, 22.04 (recent SSG) | Canonical USN OVAL (fixed CVEs)† |
 | Debian | `debian{N}` | no (pass `--profile`) | Debian |
 | SLES 12/15 | `sle{N}` | yes | SUSE |
 | Fedora, openSUSE, Amazon Linux | `fedora`, `opensuse`, `al{N}` | no | openSUSE Leap only |
+
+† Canonical's full CVE OVAL (unfixed CVEs too) is ~350 MB for jammy and oscap needs more than 4 GB of RAM for it. Fetch it with `feeds fetch --url https://security-metadata.canonical.com/oval/com.ubuntu.<codename>.cve.oval.xml.bz2` and pass it with `scan cve --feed`.
 
 \* RHEL content checks for `redhat-release`, so on a rebuild most rules come back `notapplicable`. Treat the fallback as a placeholder.
 
@@ -88,10 +90,12 @@ pip install -e '.[test]'
 pytest
 ```
 
-Test fixtures in `tests/fixtures/` are real `oscap` output: a trimmed STIG ARF from an Ubuntu 20.04 target and OVAL results from a hand-written feed that mimics Red Hat, Ubuntu and Debian metadata.
+Test fixtures in `tests/fixtures/` are real `oscap` output: a trimmed STIG ARF from an Ubuntu 20.04 target, generated fixes from OpenSCAP 1.3.9 and 1.4.2, and OVAL results from a hand-written feed that mimics Red Hat, Ubuntu and Debian metadata.
 
 ## Known limitations
 
 * Probes that query a running service (systemd, D-Bus) see the container, not the host. Rules that depend on them may report `notchecked` or `error`; these land in the `review` bucket.
 * OpenSCAP is part of the container image, not the Python package, because `oscap` is a C binary with its own libraries and probes. The image refuses to build with OpenSCAP older than 1.4.0; pin an exact version with `--build-arg OPENSCAP_VERSION=...`.
-* OpenSCAP 1.3.9 (Ubuntu 24.04's package) crashes in the `dpkginfo` probe when scanning a mounted root. `rockhard detect` reports the `oscap` version and warns about this. The image uses Fedora's OpenSCAP 1.4.x; Debian and Ubuntu targets still need verification on a real host.
+* OpenSCAP 1.3.9 (Ubuntu 24.04's package) crashes in the `dpkginfo` probe when scanning a mounted root. `rockhard detect` reports the `oscap` version and warns about this. The image uses Fedora's OpenSCAP 1.4.x, which has been verified against an Ubuntu 22.04 host (STIG and USN scans).
+* OVAL `uname` tests do not run against a mounted root, so kernel advisories come back `unknown` and are left out of `cve-findings.json` (614 of them on Ubuntu 22.04). `scan cve` reports the `unknown` count in `counts` and `warnings`; check the host's running kernel separately.
+* With podman older than 4 (e.g. Ubuntu 22.04's 3.4.4) there is no `rro` mount option. `rockhard-container` then binds every host mount point read-only one by one; podman's own storage under `/var/lib/containers/storage/overlay` stays writable in that mode.

@@ -41,7 +41,7 @@ def test_detect_missing(tmp_path):
         (OSInfo("rocky", "9.3", ("rhel", "centos", "fedora")), ("rocky9", "rhel9"), None, None),
         (OSInfo("almalinux", "9.3"), ("almalinux9", "rhel9"), "almalinux", "alsa-9.xml.bz2"),
         (OSInfo("ol", "9.2"), ("ol9",), "oracle", "elsa-ol9.xml.bz2"),
-        (OSInfo("ubuntu", "22.04", ("debian",), "jammy"), ("ubuntu2204",), "ubuntu", "com.ubuntu.jammy.cve.oval.xml.bz2"),
+        (OSInfo("ubuntu", "22.04", ("debian",), "jammy"), ("ubuntu2204",), "ubuntu", "com.ubuntu.jammy.usn.oval.xml.bz2"),
         (OSInfo("debian", "12", (), "bookworm"), ("debian12",), "debian", "oval-definitions-bookworm.xml.bz2"),
         (OSInfo("sles", "15.5"), ("sle15",), "suse", "suse.linux.enterprise.server.15-sp5.xml.gz"),
         (OSInfo("amzn", "2023"), ("al2023",), None, None),

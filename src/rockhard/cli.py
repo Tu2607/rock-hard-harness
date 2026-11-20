@@ -120,6 +120,15 @@ def cmd_scan_cve(args) -> dict:
     if not run.ok:
         raise CLIError(f"oscap failed with exit code {run.returncode}; see {run.log}")
     data = parse_oval_results(run.results).to_dict()
+    warnings = []
+    if data["counts"].get("unknown"):
+        # Seen on Ubuntu: every kernel USN comes back unknown because oscap's
+        # uname probe refuses to run against a mounted root (offline mode).
+        warnings.append(
+            f"{data['counts']['unknown']} definitions evaluated to 'unknown' and are not in the findings; "
+            "with a mounted root these are typically kernel advisories (the uname probe does not run offline). "
+            "Check the running kernel on the host against the vendor's kernel advisories."
+        )
     return {
         "track": "cve",
         "scanner": _scanner(info, args.root),
@@ -129,6 +138,8 @@ def cmd_scan_cve(args) -> dict:
         "findings_file": _write(out, "cve-findings.json", data),
         "summary": data["summary"],
         "unique_cves": data["unique_cves"],
+        "counts": data["counts"],
+        "warnings": warnings,
     }
 
 

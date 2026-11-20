@@ -106,7 +106,16 @@ def oval_feed(info: OSInfo) -> OvalFeed | None:
     if i == "ol":
         return OvalFeed(f"https://linux.oracle.com/security/oval/com.oracle.elsa-ol{major}.xml.bz2", "oracle")
     if i == "ubuntu" and code:
-        return OvalFeed(f"https://security-metadata.canonical.com/oval/com.ubuntu.{code}.cve.oval.xml.bz2", "ubuntu")
+        # The USN feed (security notices: CVEs with a released fix) rather
+        # than the full CVE feed: on jammy the CVE feed is ~350 MB unpacked
+        # and oscap needs more than 4 GB of RAM to evaluate it, while the USN
+        # feed is ~50 MB and covers everything a patch can fix. Unfixed CVEs
+        # need the CVE feed: `feeds fetch --url .../com.ubuntu.{code}.cve.oval.xml.bz2`.
+        return OvalFeed(
+            f"https://security-metadata.canonical.com/oval/com.ubuntu.{code}.usn.oval.xml.bz2",
+            "ubuntu",
+            "USN feed: CVEs with a released fix only; use the .cve.oval feed for unfixed ones",
+        )
     if i == "debian" and code:
         return OvalFeed(f"https://www.debian.org/security/oval/oval-definitions-{code}.xml.bz2", "debian")
     if i == "sles":
