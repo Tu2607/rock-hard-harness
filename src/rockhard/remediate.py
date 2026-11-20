@@ -89,8 +89,8 @@ def _summary(f: RuleFinding) -> dict:
 
 
 def _filename(index: int, f: RuleFinding) -> str:
-    sev = {"high": "1-high", "medium": "2-medium", "low": "3-low"}.get(f.severity, "4-unknown")
-    return f"{sev}_{index:03d}_{f.short_id}.sh"
+    # The index leads so that `ls` lists scripts in the order they must run.
+    return f"{index:03d}_{f.severity or 'unknown'}_{f.short_id}.sh"
 
 
 def build_plan(report: ComplianceReport, arf: str | Path, out_dir: str | Path, script: str | None = None) -> RemediationPlan:
@@ -111,8 +111,13 @@ def build_plan(report: ComplianceReport, arf: str | Path, out_dir: str | Path, s
         fixes = split_fix_script(script)
 
     plan = RemediationPlan(profile=report.profile, out_dir=str(out))
-    order = {"high": 0, "medium": 1, "low": 2}
-    for i, f in enumerate(sorted(failed, key=lambda f: (order.get(f.severity, 3), f.rule_id)), start=1):
+    # Keep oscap's fix order: SSG puts package installs ahead of the rules
+    # that configure those packages. Sorting by severity broke that on a
+    # real host: pwquality.conf was written before libpam-pwquality was
+    # installed, and the package's conffile prompt failed dpkg.
+    rank = {rule: n for n, rule in enumerate(fixes)}
+    ordered = sorted(failed, key=lambda f: (rank.get(f.rule_id, len(rank)), f.rule_id))
+    for i, f in enumerate(ordered, start=1):
         body = fixes.get(f.rule_id, "")
         if not body:
             entry = _summary(f)

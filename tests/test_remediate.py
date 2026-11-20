@@ -49,3 +49,25 @@ def test_split_fix_script_oscap14_subshell():
         assert body.startswith("# Remediation is applicable only in certain platforms")
         assert body.endswith("fi")
         assert subprocess.run(["bash", "-n"], input=body, text=True).returncode == 0
+
+
+def test_build_plan_keeps_oscap_fix_order(tmp_path):
+    # Scripts are numbered in oscap's order, not by severity or rule id:
+    # SSG installs packages before the rules that configure them.
+    arf = FIX / "ubuntu2004-stig-arf.xml"
+    report = parse_xccdf_results(arf)
+
+    def block(n, rule, body):
+        return (
+            f"# BEGIN fix ({n} / 2) for '{RULE}{rule}'\n" + "#" * 79 + "\n"
+            f"(>&2 echo \"Remediating rule {n}/2: '{RULE}{rule}'\"); (\n{body}\n) # END fix for '{RULE}{rule}'\n"
+        )
+
+    script = block(1, "package_aide_installed", "apt-get install -y aide") + block(
+        2, "file_permissions_etc_shadow", "chmod 0640 /etc/shadow"
+    )
+    plan = build_plan(report, arf, tmp_path, script=script)
+
+    names = [Path(s["path"]).name for s in plan.scripts]
+    assert names == ["001_medium_package_aide_installed.sh", "002_medium_file_permissions_etc_shadow.sh"]
+    assert sorted(names) == names
