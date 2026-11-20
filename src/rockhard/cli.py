@@ -89,9 +89,13 @@ def cmd_scan_compliance(args) -> dict:
         raise CLIError(f"oscap failed with exit code {run.returncode}; see {run.log}")
     report = parse_xccdf_results(run.results)
     data = report.to_dict(include_passing=args.all)
+    scanner = _scanner(info, args.root)
+    warning = oscap.applicability_warning(data["counts"], datastream, info.pretty_name or info.id)
+    if warning:
+        scanner.setdefault("warnings", []).append(warning)
     result = {
         "track": "compliance",
-        "scanner": _scanner(info, args.root),
+        "scanner": scanner,
         "os": info.to_dict(),
         "datastream": datastream,
         "scan": run.to_dict(),
