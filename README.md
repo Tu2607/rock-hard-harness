@@ -25,7 +25,7 @@ host /  ──(read-only bind)──▶  /host in the scanner container
 ```
 
 * **One engine.** Both tracks run `oscap` against the mounted host root and feed a shared parser layer (`rockhard.parsers`) that emits normalised JSON.
-* **Isolation.** The container gets the host root read-only, drops every capability except `DAC_READ_SEARCH`, runs with `no-new-privileges`, a read-only image filesystem and **no network** during scans. Only `feeds fetch` has network access.
+* **Isolation.** The container gets the host root read-only, drops every capability except `DAC_READ_SEARCH` (read root-only files) and `SYS_CHROOT` (oscap's probes chroot into the mounted root), runs with `no-new-privileges`, a read-only image filesystem and **no network** during scans. Only `feeds fetch` has network access.
 * **Every command prints JSON**, so Claude can drive the harness through a shell today. An MCP server over the same library is planned.
 
 ## Supported targets

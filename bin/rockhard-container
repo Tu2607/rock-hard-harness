@@ -9,7 +9,8 @@
 #
 # Isolation: the host root is mounted read-only at /host, all capabilities are
 # dropped except DAC_READ_SEARCH (to read root-only files such as
-# /etc/shadow), and scans run with networking disabled. Only `feeds fetch`
+# /etc/shadow) and SYS_CHROOT (oscap's probes chroot into /host when
+# OSCAP_PROBE_ROOT is set, and abort without it), and scans run with networking disabled. Only `feeds fetch`
 # gets network access, and it can only write to the feed cache volume.
 # Results land in $ROCKHARD_OUT (default ./rockhard-out) on the host.
 set -euo pipefail
@@ -42,11 +43,28 @@ fi
 
 mkdir -p "$OUT"
 
-# Recursive read-only bind so submounts (/boot, /home, ...) are read-only too.
+# The host root must be read-only all the way down, submounts (/boot, /proc,
+# /sys, ...) included. A plain `ro` bind only covers the top mount: the
+# submounts come along through rbind and stay writable.
 if [[ "$engine" == docker ]]; then
   host_mount=(--mount "type=bind,source=/,target=/host,readonly,bind-recursive=readonly")
-else
+elif "$engine" run --rm --network none -v "$OUT:/probe:rro" --entrypoint true "$IMAGE" >/dev/null 2>&1; then
   host_mount=(-v "/:/host:rro")
+else
+  # No recursive read-only binds (podman < 4, old crun, kernel < 5.12): lay a
+  # read-only bind over every host mount point, so each submount the rbind
+  # brought in is covered by a read-only copy of itself. Known gap: podman's
+  # own storage (/var/lib/containers/storage/overlay) stays writable, because
+  # podman mounts this container's rootfs there after the binds are laid out.
+  echo "rockhard-container: $engine has no 'rro' mount option; binding each host mount read-only (podman storage stays writable)" >&2
+  host_mount=()
+  while IFS= read -r target; do
+    if [[ "$target" == *[\\:,]* ]]; then
+      echo "rockhard-container: cannot bind $target read-only (special characters); refusing to scan with a writable submount" >&2
+      exit 1
+    fi
+    host_mount+=(-v "$target:/host${target%/}:ro")
+  done < <(findmnt -rn -o TARGET | awk '!seen[$0]++')
 fi
 
 args=(
@@ -54,7 +72,7 @@ args=(
   "${host_mount[@]}"
   -v "$OUT:/out"
   -v "$FEEDS_VOLUME:/var/cache/rockhard/feeds"
-  --cap-drop ALL --cap-add DAC_READ_SEARCH
+  --cap-drop ALL --cap-add DAC_READ_SEARCH --cap-add SYS_CHROOT
   --security-opt no-new-privileges
   --security-opt label=disable
   --read-only --tmpfs /tmp
