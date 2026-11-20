@@ -105,7 +105,11 @@ def cmd_scan_compliance(args) -> dict:
     }
     if args.remediate:
         plan = remediate.build_plan(report, run.results, out / "remediation")
-        result["remediation"] = {"plan": str(out / "remediation" / "plan.json"), **plan.to_dict()["summary"]}
+        result["remediation"] = {
+            "plan": str(out / "remediation" / "plan.json"),
+            **plan.to_dict()["summary"],
+            "notes": plan.notes,
+        }
     return result
 
 
