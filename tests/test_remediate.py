@@ -36,3 +36,16 @@ def test_build_plan(tmp_path):
 
     manifest = json.loads((tmp_path / "plan.json").read_text())
     assert manifest["summary"] == {"scripts": 1, "manual": 1, "review": 0}
+
+
+def test_split_fix_script_oscap14_subshell():
+    # oscap 1.4 wraps each fix in a subshell: `(>&2 echo ...); (` ... `) # END fix`.
+    # Each body must be valid bash on its own, without a stray `)`.
+    import subprocess
+
+    fixes = split_fix_script((FIX / "ubuntu2204-generated-fix-oscap142.sh").read_text())
+    assert set(fixes) == {RULE + "package_aide_installed", RULE + "disable_ctrlaltdel_reboot"}
+    for body in fixes.values():
+        assert body.startswith("# Remediation is applicable only in certain platforms")
+        assert body.endswith("fi")
+        assert subprocess.run(["bash", "-n"], input=body, text=True).returncode == 0

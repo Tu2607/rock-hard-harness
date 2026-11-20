@@ -63,8 +63,16 @@ def split_fix_script(script: str) -> dict[str, str]:
         body = script[start : end_marker if end_marker != -1 else len(script)]
         lines = body.splitlines()
         # Drop the banner line after BEGIN and oscap's progress echo.
+        subshell = False
         while lines and (lines[0].strip() in ("", _RULE_LINE) or lines[0].startswith('(>&2 echo "Remediating rule')):
+            # oscap >= 1.4 opens a subshell on the echo line (`...; (`) and
+            # closes it on the END line (`) # END fix ...`).
+            subshell = subshell or lines[0].rstrip().endswith("; (")
             lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        if subshell and lines and lines[-1].strip() == ")":
+            lines.pop()
         body = "\n".join(lines).strip()
         fixes[rule] = "" if _MISSING in body else body
     return fixes
