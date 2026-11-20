@@ -1,0 +1,40 @@
+# rock-hard-harness scanner image.
+#
+# Fedora ships a current OpenSCAP (1.4.x). SCAP Security Guide content for
+# every supported distro comes from the upstream ComplianceAsCode release,
+# because distro packages only carry content for their own family.
+FROM registry.fedoraproject.org/fedora:41
+
+# OpenSCAP must be >= 1.4.0 to scan Debian/Ubuntu hosts from a mounted root
+# (older dpkginfo probes crash). Set OPENSCAP_VERSION to pin an exact Fedora
+# build, e.g. --build-arg OPENSCAP_VERSION=1.4.0; empty takes the newest.
+ARG OPENSCAP_VERSION=""
+ARG SSG_VERSION=0.1.76
+# Optional: pin the release zip. Leave empty to skip verification.
+ARG SSG_SHA256=""
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+        "openscap-scanner${OPENSCAP_VERSION:+-$OPENSCAP_VERSION}" \
+        python3 python3-lxml python3-pip unzip bzip2 xz \
+    && dnf clean all \
+    && oscap --version | head -1 \
+    && python3 -c 'import re,subprocess,sys; v=re.search(r"\(oscap\)\s+([\d.]+)", subprocess.run(["oscap","--version"],capture_output=True,text=True).stdout).group(1); sys.exit(0 if tuple(map(int,v.split(".")))>=(1,4,0) else f"oscap {v} < 1.4.0")'
+
+RUN curl -fsSL -o /tmp/ssg.zip \
+        "https://github.com/ComplianceAsCode/content/releases/download/v${SSG_VERSION}/scap-security-guide-${SSG_VERSION}.zip" \
+    && if [ -n "$SSG_SHA256" ]; then echo "${SSG_SHA256}  /tmp/ssg.zip" | sha256sum -c -; fi \
+    && mkdir -p /usr/share/xml/scap/ssg/content \
+    && unzip -j -q /tmp/ssg.zip "scap-security-guide-${SSG_VERSION}/*-ds.xml" -d /usr/share/xml/scap/ssg/content \
+    && rm /tmp/ssg.zip
+
+COPY pyproject.toml README.md /src/
+COPY src /src/src
+RUN pip3 install --no-cache-dir --no-deps /src && rm -rf /src
+
+ENV ROCKHARD_ROOT=/host \
+    ROCKHARD_OUT=/out \
+    ROCKHARD_FEED_CACHE=/var/cache/rockhard/feeds \
+    ROCKHARD_CONTENT_DIR=/usr/share/xml/scap/ssg/content
+
+ENTRYPOINT ["rockhard"]
+CMD ["--help"]

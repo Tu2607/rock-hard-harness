@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-written OVAL feed mimicking Ubuntu, Red Hat and Debian metadata
+     styles. sample-oval-results.xml is the output of `oscap oval eval`
+     against it, on a root where bash and dpkg are installed. -->
+<oval_definitions xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5"
+    xmlns:oval="http://oval.mitre.org/XMLSchema/oval-common-5"
+    xmlns:linux="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+  <generator>
+    <oval:product_name>rock-hard-harness test fixture</oval:product_name>
+    <oval:schema_version>5.11.1</oval:schema_version>
+    <oval:timestamp>2026-11-19T00:00:00</oval:timestamp>
+  </generator>
+  <definitions>
+    <definition id="oval:test.ubuntu:def:1" version="1" class="vulnerability">
+      <metadata>
+        <title>CVE-2099-0001 on Ubuntu 20.04 (focal) - high.</title>
+        <reference source="CVE" ref_id="CVE-2099-0001" ref_url="https://ubuntu.com/security/CVE-2099-0001"/>
+        <description>Example bash vulnerability.</description>
+        <advisory>
+          <severity>High</severity>
+          <cve href="https://ubuntu.com/security/CVE-2099-0001" priority="high" public="20990101" cvss_score="7.8" cvss_vector="CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H">CVE-2099-0001</cve>
+        </advisory>
+      </metadata>
+      <criteria>
+        <criterion test_ref="oval:test:tst:1" comment="(CVE-2099-0001) bash package in focal was vulnerable but has been fixed (note: '99.0')."/>
+      </criteria>
+    </definition>
+    <definition id="oval:test.redhat:def:2" version="1" class="patch">
+      <metadata>
+        <title>RHSA-2099:0002: coreutils security update (Important)</title>
+        <reference source="RHSA" ref_id="RHSA-2099:0002" ref_url="https://access.redhat.com/errata/RHSA-2099:0002"/>
+        <reference source="CVE" ref_id="CVE-2099-0002" ref_url="https://access.redhat.com/security/cve/CVE-2099-0002"/>
+        <description>Not vulnerable: version check is false.</description>
+        <advisory from="secalert@redhat.com">
+          <severity>Important</severity>
+          <cve cvss3="7.5/CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H" impact="important">CVE-2099-0002</cve>
+        </advisory>
+      </metadata>
+      <criteria>
+        <criterion test_ref="oval:test:tst:2" comment="coreutils is earlier than 0:0.1"/>
+      </criteria>
+    </definition>
+    <definition id="oval:test.redhat:def:3" version="1" class="patch">
+      <metadata>
+        <title>RHSA-2099:0003: dpkg security update (Moderate)</title>
+        <reference source="RHSA" ref_id="RHSA-2099:0003" ref_url="https://access.redhat.com/errata/RHSA-2099:0003"/>
+        <reference source="CVE" ref_id="CVE-2099-0003" ref_url="https://access.redhat.com/security/cve/CVE-2099-0003"/>
+        <reference source="CVE" ref_id="CVE-2099-0004" ref_url="https://access.redhat.com/security/cve/CVE-2099-0004"/>
+        <description>Red Hat style patch definition covering two CVEs.</description>
+        <advisory from="secalert@redhat.com">
+          <severity>Moderate</severity>
+          <cve cvss3="5.5/CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H" impact="moderate">CVE-2099-0003</cve>
+          <cve cvss3="4.0/CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:L" impact="low">CVE-2099-0004</cve>
+        </advisory>
+      </metadata>
+      <criteria operator="OR">
+        <criterion test_ref="oval:test:tst:3" comment="dpkg is earlier than 0:99.0"/>
+        <criterion test_ref="oval:test:tst:2" comment="coreutils is earlier than 0:0.1"/>
+      </criteria>
+    </definition>
+    <definition id="oval:test.debian:def:4" version="1" class="vulnerability">
+      <metadata>
+        <title>CVE-2099-0005 dpkg</title>
+        <reference source="CVE" ref_id="CVE-2099-0005" ref_url="https://security-tracker.debian.org/tracker/CVE-2099-0005"/>
+        <description>Debian style: no advisory block, CVE only in references.</description>
+      </metadata>
+      <criteria>
+        <criterion test_ref="oval:test:tst:3" comment="dpkg DPKG is earlier than 99.0"/>
+      </criteria>
+    </definition>
+    <definition id="oval:test.inventory:def:5" version="1" class="inventory">
+      <metadata>
+        <title>bash is installed</title>
+        <description>Inventory definitions are not findings.</description>
+      </metadata>
+      <criteria>
+        <criterion test_ref="oval:test:tst:1" comment="bash present"/>
+      </criteria>
+    </definition>
+  </definitions>
+  <tests>
+    <linux:dpkginfo_test id="oval:test:tst:1" version="1" check="at least one" comment="bash earlier than 99.0">
+      <linux:object object_ref="oval:test:obj:1"/>
+      <linux:state state_ref="oval:test:ste:1"/>
+    </linux:dpkginfo_test>
+    <linux:dpkginfo_test id="oval:test:tst:2" version="1" check="at least one" comment="coreutils earlier than 0.1">
+      <linux:object object_ref="oval:test:obj:2"/>
+      <linux:state state_ref="oval:test:ste:2"/>
+    </linux:dpkginfo_test>
+    <linux:dpkginfo_test id="oval:test:tst:3" version="1" check="at least one" comment="dpkg earlier than 99.0">
+      <linux:object object_ref="oval:test:obj:3"/>
+      <linux:state state_ref="oval:test:ste:1"/>
+    </linux:dpkginfo_test>
+  </tests>
+  <objects>
+    <linux:dpkginfo_object id="oval:test:obj:1" version="1"><linux:name>bash</linux:name></linux:dpkginfo_object>
+    <linux:dpkginfo_object id="oval:test:obj:2" version="1"><linux:name>coreutils</linux:name></linux:dpkginfo_object>
+    <linux:dpkginfo_object id="oval:test:obj:3" version="1"><linux:name>dpkg</linux:name></linux:dpkginfo_object>
+  </objects>
+  <states>
+    <linux:dpkginfo_state id="oval:test:ste:1" version="1"><linux:evr datatype="debian_evr_string" operation="less than">0:99.0</linux:evr></linux:dpkginfo_state>
+    <linux:dpkginfo_state id="oval:test:ste:2" version="1"><linux:evr datatype="debian_evr_string" operation="less than">0:0.1</linux:evr></linux:dpkginfo_state>
+  </states>
+</oval_definitions>
