@@ -31,7 +31,7 @@ SCRIPT_HEADER = """#!/usr/bin/env bash
 # Fix:       {fix}
 # Source:    SCAP Security Guide fix via `oscap xccdf generate fix`
 #
-# Review before running. Run as root on the scanned host, then rescan.{reboot}
+# Review before running. Run as root on the scanned host, then rescan.
 """
 
 
@@ -45,12 +45,7 @@ class RemediationPlan:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        d["summary"] = {
-            "scripts": len(self.scripts),
-            "manual": len(self.manual),
-            "review": len(self.review),
-            "requires_reboot": sum(1 for s in self.scripts if s.get("requires_reboot")),
-        }
+        d["summary"] = {"scripts": len(self.scripts), "manual": len(self.manual), "review": len(self.review)}
         return d
 
 
@@ -81,20 +76,6 @@ def split_fix_script(script: str) -> dict[str, str]:
         body = "\n".join(lines).strip()
         fixes[rule] = "" if _MISSING in body else body
     return fixes
-
-
-# Rules whose fix only takes effect at the next boot but which SSG does not
-# mark with reboot="true": kernel command line arguments set through grub
-# (grub2_audit_argument, grub2_pti_argument, ...) and FIPS mode.
-_BOOT_RULE = re.compile(r"^(grub2_|zipl_)|^(enable_fips_mode|enable_dracut_fips_module)$")
-
-
-def requires_reboot(f: RuleFinding) -> bool:
-    """True when the fix needs a reboot before the running system complies.
-
-    A rescan can pass before then, because it reads the configuration.
-    """
-    return f.fix.get("reboot") == "true" or bool(_BOOT_RULE.search(f.short_id))
 
 
 def _summary(f: RuleFinding) -> dict:
@@ -152,16 +133,12 @@ def build_plan(report: ComplianceReport, arf: str | Path, out_dir: str | Path, s
             stig=", ".join(f.stig_ids) or "-",
             srg=", ".join(f.srg_ids + f.cci) or "-",
             fix=", ".join(f"{k}={v}" for k, v in f.fix.items()) or "-",
-            reboot="\n# Takes effect after a reboot: the rescan can pass before the running system complies."
-            if requires_reboot(f)
-            else "",
         )
         path.write_text(header + "\n" + body + "\n")
         path.chmod(0o640)  # deliberately not executable until reviewed
         entry = _summary(f)
         entry["path"] = str(path)
         entry["fix"] = f.fix
-        entry["requires_reboot"] = requires_reboot(f)
         plan.scripts.append(entry)
 
     plan.review = [_summary(f) for f in report.findings if f.category == "review"]

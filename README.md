@@ -100,7 +100,7 @@ rockhard parse cve out/cve-oval-results.xml
 | `compliance-arf.xml`, `compliance-report.html` | Raw OpenSCAP results and report |
 | `compliance-findings.json` | Non-passing rules: result, severity, STIG/SRG/CCI ids, category (`automatable`, `manual`, `review`), description |
 | `remediation/scripts/*.sh` | One script per automatable failed rule, from SSG's own fixes, named `NNN_<severity>_<rule>.sh`. `NNN` is the run order SSG uses (package installs before the rules that configure them). Not executable until reviewed |
-| `remediation/plan.json` | Which rules got scripts, which need Claude (`manual`), which need a human look (`review`). Scripts whose fix only takes effect after a reboot (kernel arguments via grub, FIPS, sysctl, kernel modules) carry `requires_reboot: true` |
+| `remediation/plan.json` | Which rules got scripts, which need Claude (`manual`), which need a human look (`review`) |
 | `cve-oval-results.xml`, `cve-report.html` | Raw OVAL results and report |
 | `cve-findings.json` | True vulnerability/patch definitions: CVEs, vendor severity, advisories, and the criteria that matched (affected package and fixed version) |
 
