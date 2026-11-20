@@ -46,17 +46,28 @@ mkdir -p "$OUT"
 # The host root must be read-only all the way down, submounts (/boot, /proc,
 # /sys, ...) included. A plain `ro` bind only covers the top mount: the
 # submounts come along through rbind and stay writable.
+#
+# Docker cannot do that for /: a recursive read-only bind needs rprivate
+# propagation, and Docker refuses rprivate for a source that contains its own
+# data root (/var/lib/docker). Docker therefore takes the per-mount path below.
 if [[ "$engine" == docker ]]; then
-  host_mount=(--mount "type=bind,source=/,target=/host,readonly,bind-recursive=readonly")
+  rro=no
 elif "$engine" run --rm --network none -v "$OUT:/probe:rro" --entrypoint true "$IMAGE" >/dev/null 2>&1; then
+  rro=yes
+else
+  rro=no
+fi
+
+if [[ $rro == yes ]]; then
   host_mount=(-v "/:/host:rro")
 else
-  # No recursive read-only binds (podman < 4, old crun, kernel < 5.12): lay a
+  # No recursive read-only binds (Docker, podman < 4, old crun, kernel < 5.12): lay a
   # read-only bind over every host mount point, so each submount the rbind
-  # brought in is covered by a read-only copy of itself. Known gap: podman's
-  # own storage (/var/lib/containers/storage/overlay) stays writable, because
-  # podman mounts this container's rootfs there after the binds are laid out.
-  echo "rockhard-container: $engine has no 'rro' mount option; binding each host mount read-only (podman storage stays writable)" >&2
+  # brought in is covered by a read-only copy of itself. Known gap: the engine's
+  # own storage (/var/lib/containers/storage/overlay for podman, /var/lib/docker
+  # for Docker) stays writable, because the engine mounts this
+  # container's rootfs there after the binds are laid out.
+  echo "rockhard-container: no recursive read-only bind with $engine; binding each host mount read-only (the engine's own storage stays writable)" >&2
   host_mount=()
   while IFS= read -r target; do
     if [[ "$target" == *[\\:,]* ]]; then
@@ -65,6 +76,16 @@ else
     fi
     host_mount+=(-v "$target:/host${target%/}:ro")
   done < <(findmnt -rn -o TARGET | awk '!seen[$0]++')
+fi
+
+# oscap reads the rpm database from /usr/lib/sysimage/rpm whenever that
+# directory exists, but EL8/EL9 keep it in /var/lib/rpm and some of them also
+# carry a stale copy in /usr/lib/sysimage/rpm (Oracle Linux 9). Show oscap the
+# real one there. Read-only, and only inside the container.
+if [[ -d /usr/lib/sysimage/rpm && ! -L /usr/lib/sysimage/rpm && -d /var/lib/rpm && ! -L /var/lib/rpm ]] \
+   && grep -qE '^%_dbpath[[:space:]]+%\{_var\}/lib/rpm' /usr/lib/rpm/macros 2>/dev/null \
+   && [[ "$(readlink -f /usr/lib/sysimage/rpm)" != "$(readlink -f /var/lib/rpm)" ]]; then
+  host_mount+=(-v "/var/lib/rpm:/host/usr/lib/sysimage/rpm:ro")
 fi
 
 args=(

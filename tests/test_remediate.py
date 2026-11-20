@@ -71,3 +71,16 @@ def test_build_plan_keeps_oscap_fix_order(tmp_path):
     names = [Path(s["path"]).name for s in plan.scripts]
     assert names == ["001_medium_package_aide_installed.sh", "002_medium_file_permissions_etc_shadow.sh"]
     assert sorted(names) == names
+
+
+def test_boot_parameter_note(tmp_path):
+    arf = FIX / "ubuntu2004-stig-arf.xml"
+    report = parse_xccdf_results(arf)
+    plan = build_plan(report, arf, tmp_path / "a", script=(FIX / "ubuntu2004-generated-fix.sh").read_text())
+    assert plan.notes == []
+    # Pretend the automatable rule is a grub kernel argument.
+    rule = report.failed()[0]
+    script = (FIX / "ubuntu2004-generated-fix.sh").read_text().replace(rule.short_id, "grub2_audit_argument")
+    rule.rule_id = RULE + "grub2_audit_argument"
+    plan = build_plan(report, arf, tmp_path / "b", script=script)
+    assert len(plan.notes) == 1 and "reboot" in plan.notes[0]
