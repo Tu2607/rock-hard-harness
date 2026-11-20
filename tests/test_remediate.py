@@ -3,7 +3,8 @@ import stat
 from pathlib import Path
 
 from rockhard.parsers import parse_xccdf_results
-from rockhard.remediate import build_plan, split_fix_script
+from rockhard.parsers.xccdf import RuleFinding
+from rockhard.remediate import build_plan, requires_reboot, split_fix_script
 
 FIX = Path(__file__).parent / "fixtures"
 RULE = "xccdf_org.ssgproject.content_rule_"
@@ -35,7 +36,8 @@ def test_build_plan(tmp_path):
     assert not script.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     manifest = json.loads((tmp_path / "plan.json").read_text())
-    assert manifest["summary"] == {"scripts": 1, "manual": 1, "review": 0}
+    assert manifest["summary"] == {"scripts": 1, "manual": 1, "review": 0, "requires_reboot": 0}
+    assert manifest["scripts"][0]["requires_reboot"] is False
 
 
 def test_split_fix_script_oscap14_subshell():
@@ -71,3 +73,16 @@ def test_build_plan_keeps_oscap_fix_order(tmp_path):
     names = [Path(s["path"]).name for s in plan.scripts]
     assert names == ["001_medium_package_aide_installed.sh", "002_medium_file_permissions_etc_shadow.sh"]
     assert sorted(names) == names
+
+
+def test_requires_reboot():
+    def rule(short, **fix):
+        return RuleFinding(RULE + short, "", "fail", "medium", "automatable", fix=fix)
+
+    # SSG marks sysctl fixes reboot="true" but not kernel arguments or FIPS.
+    assert requires_reboot(rule("sysctl_kernel_dmesg_restrict", reboot="true"))
+    assert requires_reboot(rule("grub2_audit_argument"))
+    assert requires_reboot(rule("grub2_pti_argument", reboot="false"))
+    assert requires_reboot(rule("enable_fips_mode"))
+    assert not requires_reboot(rule("package_aide_installed", reboot="false"))
+    assert not requires_reboot(rule("sshd_disable_root_login"))
