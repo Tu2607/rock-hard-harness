@@ -155,6 +155,16 @@ def build_plan(report: ComplianceReport, arf: str | Path, out_dir: str | Path, s
             "so the rescan passes once they run; the running kernel only picks them up after a reboot, "
             "which is left to you."
         )
-    plan.review = [_summary(f) for f in report.findings if f.category == "review"]
+    plan.review = []
+    for f in report.findings:
+        if f.category != "review":
+            continue
+        entry = _summary(f)
+        if f.offline_gaps:
+            entry["reason"] = (
+                f"not evaluated: needs the {', '.join(f.offline_gaps)} probe(s), which oscap does not run "
+                "against a mounted root"
+            )
+        plan.review.append(entry)
     (out / "plan.json").write_text(json.dumps(plan.to_dict(), indent=2))
     return plan

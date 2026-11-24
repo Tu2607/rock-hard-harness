@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .common import load_xml, text_of
+from .offline import not_really_applicable, offline_gaps
 
 XCCDF = "http://checklists.nist.gov/xccdf/1.2"
 X = f"{{{XCCDF}}}"
@@ -33,6 +34,9 @@ class RuleFinding:
     has_sh_fix: bool = False
     fix: dict[str, str] = field(default_factory=dict)  # complexity/disruption/reboot/strategy
     description: str = ""
+    # Probes this rule needs that oscap does not run against a mounted root
+    # (see parsers.offline). Non-empty means the result may be incomplete.
+    offline_gaps: list[str] = field(default_factory=list)
     rationale: str = ""
 
     @property
@@ -59,8 +63,8 @@ class ComplianceReport:
     def to_dict(self, include_passing: bool = False) -> dict:
         d = asdict(self)
         if not include_passing:
-            d["findings"] = [asdict(f) for f in self.findings if f.result in NON_PASSING]
-        by_category = Counter(f.category for f in self.findings if f.result in NON_PASSING)
+            d["findings"] = [asdict(f) for f in self.findings if f.result in NON_PASSING or f.category == "review"]
+        by_category = Counter(f.category for f in self.findings if f.result in NON_PASSING or f.category == "review")
         d["summary"] = {
             "automatable": by_category.get("automatable", 0),
             "manual": by_category.get("manual", 0),
@@ -69,7 +73,11 @@ class ComplianceReport:
         return d
 
 
-def _categorise(result: str, has_fix: bool) -> str:
+def _categorise(result: str, has_fix: bool, offline: bool = False) -> str:
+    # A rule oscap could not evaluate from a mounted root reads as
+    # "notapplicable" (or unknown/error); it was not checked, so review it.
+    if offline and result in ("notapplicable", "unknown", "error"):
+        return "review"
     if result == "fail":
         return "automatable" if has_fix else "manual"
     if result in NEEDS_REVIEW:
@@ -117,6 +125,8 @@ def parse_xccdf_results(path: str | Path, result_id: str | None = None) -> Compl
     bench_id = bench_ref.get("id", "") if bench_ref is not None else ""
     benchmark = next((b for b in root.iter(X + "Benchmark") if not bench_id or b.get("id") == bench_id), None)
 
+    gaps = offline_gaps(root)
+    unchecked = not_really_applicable(root) if gaps else set()
     findings: list[RuleFinding] = []
     counts: Counter[str] = Counter()
     for rr in tr.iterfind(X + "rule-result"):
@@ -149,7 +159,7 @@ def parse_xccdf_results(path: str | Path, result_id: str | None = None) -> Compl
                 title=title,
                 result=result,
                 severity=rr.get("severity") or (rule.get("severity") if rule is not None else "") or "unknown",
-                category=_categorise(result, has_fix),
+                category=_categorise(result, has_fix, rid in unchecked),
                 stig_ids=stig,
                 srg_ids=srg,
                 cci=cci,
@@ -158,6 +168,7 @@ def parse_xccdf_results(path: str | Path, result_id: str | None = None) -> Compl
                 fix=fix_attrs,
                 description=desc,
                 rationale=rationale,
+                offline_gaps=gaps.get(rid, []),
             )
         )
 
