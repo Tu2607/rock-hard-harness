@@ -42,6 +42,7 @@ class RemediationPlan:
     scripts: list[dict] = field(default_factory=list)  # rule_id, path, severity
     manual: list[dict] = field(default_factory=list)  # failed, no usable SSG fix: Claude's job
     review: list[dict] = field(default_factory=list)  # error / unknown / notchecked
+    notes: list[str] = field(default_factory=list)  # for the user, not per-script
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -76,6 +77,12 @@ def split_fix_script(script: str) -> dict[str, str]:
         body = "\n".join(lines).strip()
         fixes[rule] = "" if _MISSING in body else body
     return fixes
+
+
+# Fixes that change the kernel command line (grub/zipl arguments, FIPS mode).
+# The scan checks the boot configuration, so a rescan passes once the script
+# has run; the running kernel picks the change up at the next boot.
+_BOOT_CONFIG_RULE = re.compile(r"^(grub2_|zipl_)|^(enable_fips_mode|enable_dracut_fips_module)$")
 
 
 def _summary(f: RuleFinding) -> dict:
@@ -141,6 +148,23 @@ def build_plan(report: ComplianceReport, arf: str | Path, out_dir: str | Path, s
         entry["fix"] = f.fix
         plan.scripts.append(entry)
 
-    plan.review = [_summary(f) for f in report.findings if f.category == "review"]
+    boot = sum(1 for e in plan.scripts if _BOOT_CONFIG_RULE.search(e["rule_id"].removeprefix("xccdf_org.ssgproject.content_rule_")))
+    if boot:
+        plan.notes.append(
+            f"{boot} script(s) change kernel boot parameters (grub/FIPS). The scan checks the boot configuration, "
+            "so the rescan passes once they run; the running kernel only picks them up after a reboot, "
+            "which is left to you."
+        )
+    plan.review = []
+    for f in report.findings:
+        if f.category != "review":
+            continue
+        entry = _summary(f)
+        if f.offline_gaps:
+            entry["reason"] = (
+                f"not evaluated: needs the {', '.join(f.offline_gaps)} probe(s), which oscap does not run "
+                "against a mounted root"
+            )
+        plan.review.append(entry)
     (out / "plan.json").write_text(json.dumps(plan.to_dict(), indent=2))
     return plan
